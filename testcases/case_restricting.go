@@ -24,6 +24,7 @@ type restrictCases struct {
 type restrictingParams struct {
 	CreatePlan       []restricting.RestrictingPlan `json:"create_plan"`
 	CasePledgeReturn casePledgeReturnConfig        `json:"case_pledge_return"`
+	CreateWrongPlan  []restricting.RestrictingPlan `json:"create_wrong_plan"`
 }
 
 type casePledgeReturnConfig struct {
@@ -81,6 +82,47 @@ func (r *restrictCases) parseConfigJson() {
 	if err := json.Unmarshal(bytes, &r.params); err != nil {
 		panic(fmt.Errorf("parse restrictCases config to json error,%s", err.Error()))
 	}
+}
+
+func (r *restrictCases) CaseCreateWrongPlan() error {
+	ctx := context.Background()
+	account, _ := AccountPool.Get().(*PriAccount)
+	defer AccountPool.Put(account)
+	plans := r.params.CreateWrongPlan
+	_, to := r.generateEmptyAccount()
+	txHash, err := r.CreateRestrictingPlanTransaction(ctx, account, to, plans)
+	if err != nil {
+		return err
+	}
+	log.Print("txHash:", txHash.String())
+	if err := r.WaitTransactionByHash(ctx, txHash); err != nil {
+		return fmt.Errorf("wait Transaction fail:%v", err)
+	}
+	res, err := r.GetXcomResult(ctx, txHash)
+	if err != nil {
+		return err
+	}
+	log.Print(res.ErrMsg)
+	result := r.CallGetRestrictingInfo(ctx, to)
+	log.Printf("plans: %+v", result)
+	log.Print("begin next RestrictingPlan")
+	txHash2, err := r.CreateRestrictingPlanTransaction(ctx, account, to, plans)
+	if err != nil {
+		return err
+	}
+	log.Print("txHash2:", txHash2.String())
+	if err := r.WaitTransactionByHash(ctx, txHash2); err != nil {
+		return fmt.Errorf("wait Transaction fail:%v", err)
+	}
+	res2, err := r.GetXcomResult(ctx, txHash2)
+	if err != nil {
+		return err
+	}
+	log.Print(res2.ErrMsg)
+	result2 := r.CallGetRestrictingInfo(ctx, to)
+	log.Printf("plans2: %+v", result2)
+
+	return nil
 }
 
 func (r *restrictCases) CaseCreatePlan() error {
@@ -150,8 +192,8 @@ func (r *restrictCases) CaseCreatePlan() error {
 		return false, nil
 	}
 	for _, val := range result.Entry {
-		tmp := new(big.Int).Add(resAmount, val.Amount.ToInt())
-		resAmount.Add(resAmount, val.Amount.ToInt())
+		tmp := new(big.Int).Add(resAmount, (*big.Int)(val.Amount))
+		resAmount.Add(resAmount, (*big.Int)(val.Amount))
 		r.addJobs(fmt.Sprintf("锁仓释放计划高度:%v", val.Height), cmpfunc, val.Height, tmp)
 	}
 	return nil
@@ -166,8 +208,7 @@ func (r *restrictCases) CasePledgeLockAndReturn() error {
 	stakingAccount, _ := AccountPool.Get().(*PriAccount)
 	var input stakingInput
 	input.BlsPubKey = r.params.CasePledgeReturn.Staking.BlsKey
-
-	input.Amount, _ = new(big.Int).SetString("1000000000000000000000000", 10)
+	input.Amount, _ = new(big.Int).SetString("10000000000000000000000000", 10)
 	input.Typ = 0
 	_, add := r.generateEmptyAccount()
 	input.BenefitAddress = add
@@ -188,6 +229,12 @@ func (r *restrictCases) CasePledgeLockAndReturn() error {
 		return fmt.Errorf("wait Transaction2 %v fail:%v", txhash2, err)
 	}
 	log.Print("end create staking", txhash2.String())
+
+	xres, err := r.GetXcomResult(ctx, txhash2)
+	if err != nil {
+		return err
+	}
+	log.Printf("end create staking,res:%+v", xres)
 
 	log.Print("begin create restricting plans")
 	createRestrictingAccount, _ := AccountPool.Get().(*PriAccount)
@@ -218,6 +265,12 @@ func (r *restrictCases) CasePledgeLockAndReturn() error {
 	}
 
 	log.Print("end delegateTransaction", txhash4.String())
+
+	xres2, err := r.GetXcomResult(ctx, txhash4)
+	if err != nil {
+		return err
+	}
+	log.Printf("end DelegateTransaction staking,res:%+v", xres2)
 
 	res := r.CallGetRestrictingInfo(ctx, getRestrictingAccount.Address)
 	log.Printf("RestrictingInfo:%+v", res)

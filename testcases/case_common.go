@@ -81,7 +81,7 @@ func (c *commonCases) Prepare() error {
 	c.client = client
 	//	c.adrs = GetAllAddress()
 	c.corn = cron.New()
-	if _, err := c.corn.AddFunc("@every 1s", c.schedule); err != nil {
+	if err := c.corn.AddFunc("@every 1s", c.schedule); err != nil {
 		return err
 	}
 	c.donech = make(chan struct{}, 0)

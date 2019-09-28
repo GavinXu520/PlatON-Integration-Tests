@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/PlatONnetwork/PlatON-Go/common"
 	"github.com/PlatONnetwork/PlatON-Go/common/vm"
+	"github.com/PlatONnetwork/PlatON-Go/x/xcom"
 	"log"
 	"math/big"
 	"reflect"
@@ -63,7 +64,8 @@ func (r *initCases) List() []string {
 2019/08/31 16:53:27 0xf66CB3C7f28D058AE3C6eD9493C6A9e2a7d7786d balance:8050000000000000000000000000
 */
 func (r *initCases) CaseInitAccountBalance() error {
-	balance := r.GetBalance(r.cxt, vm.PlatONFoundationAddress, big.NewInt(1))
+
+	balance := r.GetBalance(r.cxt, xcom.PlatONFundAccount(), big.NewInt(1))
 	log.Print("PlatONFoundation balance:", balance)
 	balance2 := r.GetBalance(r.cxt, vm.RewardManagerPoolAddr, big.NewInt(1))
 	log.Print("RewardManagerPool balance:", balance2)
@@ -81,7 +83,7 @@ func (r *initCases) CaseRewardManagerPoolRestrictingRecord() error {
 	log.Printf("RewardManagerPoolAddr  RestrictingInfo  %+v", res)
 	totalMount := new(big.Int)
 	for _, value := range res.Entry {
-		totalMount.Add(totalMount, value.Amount.ToInt())
+		totalMount.Add(totalMount, (*big.Int)(value.Amount))
 	}
 	t, _ := new(big.Int).SetString("259096240418673500000000000", 10)
 	if totalMount.Cmp(t) != 0 {

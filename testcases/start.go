@@ -32,6 +32,7 @@ func init() {
 	allCases = make(map[string]caseTest)
 	allCases["restricting"] = new(restrictCases)
 	allCases["init_token"] = new(initCases)
+	allCases["reward"] = new(rewardCases)
 }
 
 type caseTest interface {
