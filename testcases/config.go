@@ -3,10 +3,11 @@ package testcases
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/PlatONnetwork/PlatON-Go/common"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"github.com/PlatONnetwork/PlatON-Go/common"
 )
 
 var (
@@ -23,6 +24,7 @@ type Config struct {
 	Url                    string         `json:"url"`
 	Dir                    string         `json:"dir"`
 	RestrictingConfigFile  string         `json:"restricting_config_file"`
+	StakingConfigFile      string         `json:"staking_config_file"`
 	PrivateKeyFile         string         `json:"private_key_file"`
 	DefaultAccountAddrFile string         `json:"default_account_addr_file"`
 }

@@ -1,9 +1,10 @@
 {
-  "url":"http://127.0.0.1:6980",
+  "url":"http://127.0.0.1:6789",
   "account":"0xf66CB3C7f28D058AE3C6eD9493C6A9e2a7d7786d",
   "prikey": "bfa6c75e2240a4735fdc99a73b48ae42d625f34b859327fc2f0e553f7e97888e",
   "dir": "config/",
   "restricting_config_file":"case_restricting.json",
+  "staking_config_file": "case_staking.json",
   "private_key_file": "privateKeys.txt",
   "default_account_addr_file": "addr.json"
 }

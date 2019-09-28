@@ -7,7 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	ethereum "github.com/PlatONnetwork/PlatON-Go"
+	"log"
+	"math/big"
+	"reflect"
+	"strings"
+	"time"
+
+	"github.com/PlatONnetwork/PlatON-Go/crypto/bls"
+
+	platON "github.com/PlatONnetwork/PlatON-Go"
 	"github.com/PlatONnetwork/PlatON-Go/common"
 	"github.com/PlatONnetwork/PlatON-Go/common/vm"
 	"github.com/PlatONnetwork/PlatON-Go/core/types"
@@ -20,11 +28,6 @@ import (
 	"github.com/PlatONnetwork/PlatON-Go/x/staking"
 	"github.com/PlatONnetwork/PlatON-Go/x/xcom"
 	"github.com/robfig/cron"
-	"log"
-	"math/big"
-	"reflect"
-	"strings"
-	"time"
 )
 
 const PrefixCase = "Case"
@@ -151,7 +154,7 @@ func (c *commonCases) WaitTransactionByHash(ctx context.Context, txHash common.H
 				break
 			}
 		} else {
-			if err != ethereum.NotFound {
+			if err != platON.NotFound {
 				return err
 			}
 		}
@@ -161,10 +164,10 @@ func (c *commonCases) WaitTransactionByHash(ctx context.Context, txHash common.H
 	return nil
 }
 
-type ProgramVersionValue struct {
-	ProgramVersion     uint32             `json:"ProgramVersion"`
-	ProgramVersionSign common.VersionSign `json:"ProgramVersionSign"`
-}
+//type ProgramVersionValue struct {
+//	ProgramVersion     uint32             `json:"ProgramVersion"`
+//	ProgramVersionSign common.VersionSign `json:"ProgramVersionSign"`
+//}
 
 //获取ProgramVersion
 func (c *commonCases) GetSchnorrNIZKProve(ctx context.Context) (string, error) {
@@ -177,7 +180,7 @@ func (c *commonCases) GetSchnorrNIZKProve(ctx context.Context) (string, error) {
 }
 
 //获取ProgramVersion
-func (c *commonCases) CallProgramVersion(ctx context.Context) (*params.ProgramVersion, error) {
+func (c *commonCases) GetProgramVersion(ctx context.Context) (*params.ProgramVersion, error) {
 	pg, err := c.client.GetProgramVersion(ctx)
 	if err != nil {
 		return nil, err
@@ -195,11 +198,16 @@ type stakingInput struct {
 	Website        string
 	Details        string
 	Amount         *big.Int
-	BlsPubKey      string
+
+	ProgramVersion     uint32
+	ProgramVersionSign common.VersionSign
+
+	BlsPubKey bls.PublicKeyHex
+	BlsProof  bls.SchnorrProofHex
 }
 
 //创建质押
-func (c *commonCases) CreateStakingTransaction(ctx context.Context, from *PriAccount, input stakingInput, VersionValue *ProgramVersionValue) (common.Hash, error) {
+func (c *commonCases) CreateStakingTransaction(ctx context.Context, from *PriAccount, input stakingInput) (common.Hash, error) {
 	var params [][]byte
 	params = make([][]byte, 0)
 	fnType, _ := rlp.EncodeToBytes(uint16(1000))
@@ -211,10 +219,11 @@ func (c *commonCases) CreateStakingTransaction(ctx context.Context, from *PriAcc
 	website, _ := rlp.EncodeToBytes(input.Website)
 	details, _ := rlp.EncodeToBytes(input.Details)
 	amount, _ := rlp.EncodeToBytes(input.Amount)
-	programVersion, _ := rlp.EncodeToBytes(VersionValue.ProgramVersion)
-
-	programVersionSign, _ := rlp.EncodeToBytes(VersionValue.ProgramVersionSign)
+	programVersion, _ := rlp.EncodeToBytes(input.ProgramVersion)
+	programVersionSign, _ := rlp.EncodeToBytes(input.ProgramVersionSign)
 	blsPubKey, _ := rlp.EncodeToBytes(input.BlsPubKey)
+	proofRlp, _ := rlp.EncodeToBytes(input.BlsProof)
+
 	params = append(params, fnType)
 	params = append(params, typ)
 	params = append(params, benefitAddress)
@@ -227,6 +236,7 @@ func (c *commonCases) CreateStakingTransaction(ctx context.Context, from *PriAcc
 	params = append(params, programVersion)
 	params = append(params, programVersionSign)
 	params = append(params, blsPubKey)
+	params = append(params, proofRlp)
 
 	send := c.encodePPOS(params)
 
@@ -278,7 +288,7 @@ func (c *commonCases) DelegateTransaction(ctx context.Context, account *PriAccou
 
 //查询当前账户地址所委托的节点的NodeID和质押Id
 func (c *commonCases) CallGetRelatedListByDelAddr(ctx context.Context, account common.Address) (staking.DelRelatedQueue, error) {
-	var msg ethereum.CallMsg
+	var msg platON.CallMsg
 	msg.To = &vm.StakingContractAddr
 
 	var params [][]byte
@@ -352,7 +362,7 @@ func (c *commonCases) CallGetRestrictingInfo(ctx context.Context, account common
 	params = append(params, accountBytes)
 	send := c.encodePPOS(params)
 
-	var msg ethereum.CallMsg
+	var msg platON.CallMsg
 	msg.Data = send
 	msg.To = &vm.RestrictingContractAddr
 	res, err := c.client.CallContract(ctx, msg, nil)
@@ -363,7 +373,10 @@ func (c *commonCases) CallGetRestrictingInfo(ctx context.Context, account common
 	if err := json.Unmarshal(res, &xres); err != nil {
 		panic(err)
 	}
-	if xres.ErrMsg == "" {
+
+	log.Printf("GetRestrictingInfo, res %+v", xres)
+
+	if xres.Code == 0 {
 		var result restricting.Result
 		if err := json.Unmarshal([]byte(xres.Data), &result); err != nil {
 			log.Print(xres)

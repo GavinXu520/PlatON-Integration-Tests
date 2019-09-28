@@ -3,13 +3,14 @@ package testcases
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"strings"
+
 	ethereum "github.com/PlatONnetwork/PlatON-Go"
 	"github.com/PlatONnetwork/PlatON-Go/common"
 	"github.com/PlatONnetwork/PlatON-Go/common/hexutil"
 	"github.com/PlatONnetwork/PlatON-Go/core/types"
 	"github.com/PlatONnetwork/PlatON-Go/ethclient"
-	"math/big"
-	"strings"
 )
 
 type TxParams struct {

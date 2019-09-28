@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/PlatONnetwork/PlatON-Go/common/vm"
-	"github.com/PlatONnetwork/PlatON-Go/core/types"
-	"github.com/PlatONnetwork/PlatON-Go/p2p/discover"
-	"github.com/PlatONnetwork/PlatON-Go/x/restricting"
 	"io/ioutil"
 	"log"
 	"math/big"
 	"path"
+
+	"github.com/PlatONnetwork/PlatON-Go/common"
+	"github.com/PlatONnetwork/PlatON-Go/common/vm"
+	"github.com/PlatONnetwork/PlatON-Go/core/types"
+	"github.com/PlatONnetwork/PlatON-Go/crypto/bls"
+	"github.com/PlatONnetwork/PlatON-Go/p2p/discover"
+	"github.com/PlatONnetwork/PlatON-Go/x/restricting"
 )
 
 type restrictCases struct {
@@ -201,13 +204,40 @@ func (r *restrictCases) CaseCreatePlan() error {
 
 func (r *restrictCases) CasePledgeLockAndReturn() error {
 	ctx := context.Background()
-	_, err := r.CallProgramVersion(ctx)
+	_, err := r.GetProgramVersion(ctx)
 	if err != nil {
 		return err
 	}
 	stakingAccount, _ := AccountPool.Get().(*PriAccount)
+
+	versionValue, err := r.GetProgramVersion(ctx)
+	if err != nil {
+		return err
+	}
+
+	proof, err := r.GetSchnorrNIZKProve(ctx)
+	if err != nil {
+		return err
+	}
+
 	var input stakingInput
-	input.BlsPubKey = r.params.CasePledgeReturn.Staking.BlsKey
+
+	// programVersion
+	input.ProgramVersion = versionValue.Version
+	// programVersionSign
+	var versionSign common.VersionSign
+	versionSign.UnmarshalText([]byte(versionValue.Sign))
+	input.ProgramVersionSign = versionSign
+
+	// bls publicKey
+	var keyHex bls.PublicKeyHex
+	keyHex.UnmarshalText([]byte(r.params.CasePledgeReturn.Staking.BlsKey))
+	input.BlsPubKey = keyHex
+	// bls proof
+	var proofHex bls.SchnorrProofHex
+	proofHex.UnmarshalText([]byte(proof))
+	input.BlsProof = proofHex
+
 	input.Amount, _ = new(big.Int).SetString("10000000000000000000000000", 10)
 	input.Typ = 0
 	_, add := r.generateEmptyAccount()
@@ -219,7 +249,7 @@ func (r *restrictCases) CasePledgeLockAndReturn() error {
 	input.NodeId = id
 
 	log.Print("begin create staking")
-	txhash2, err := r.CreateStakingTransaction(ctx, stakingAccount, input, nil)
+	txhash2, err := r.CreateStakingTransaction(ctx, stakingAccount, input)
 	if err != nil {
 		return fmt.Errorf("createStakingTransaction fail:%v", err)
 	}
