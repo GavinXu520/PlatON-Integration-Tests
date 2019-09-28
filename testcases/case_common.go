@@ -81,7 +81,7 @@ func (c *commonCases) Prepare() error {
 	c.client = client
 	//	c.adrs = GetAllAddress()
 	c.corn = cron.New()
-	if err := c.corn.AddFunc("@every 1s", c.schedule); err != nil {
+	if _, err := c.corn.AddFunc("@every 1s", c.schedule); err != nil {
 		return err
 	}
 	c.donech = make(chan struct{}, 0)
@@ -340,7 +340,7 @@ func (c *commonCases) CallGetRestrictingInfo(ctx context.Context, account common
 	if err := json.Unmarshal(res, &xres); err != nil {
 		panic(err)
 	}
-	if xres.Status {
+	if xres.Code != 0 {
 		var result restricting.Result
 		if err := json.Unmarshal([]byte(xres.Data), &result); err != nil {
 			log.Print(xres)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/cheng762/platon-test-tool/testcases"
+	"github.com/PlatONnetwork/PlatON-Integration-Tests/testcases"
 	"gopkg.in/urfave/cli.v1"
 	"os"
 	"sort"
