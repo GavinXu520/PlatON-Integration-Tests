@@ -109,6 +109,46 @@ func (s *stakingCases) CaseBatchDelegate() error {
 
 	}
 
+	// 等待交易被确认
+	waitFn := func(client *ethclient.Client, ctx context.Context, txHash common.Hash) error {
+		i := 0
+		for {
+			if i > 10 {
+				return errors.New("wait to long")
+			}
+			_, isPending, err := client.TransactionByHash(ctx, txHash)
+			if err == nil {
+				if !isPending {
+					break
+				}
+			} else {
+				if err != platON.NotFound {
+					return err
+				}
+			}
+			time.Sleep(time.Second)
+			i++
+		}
+		return nil
+	}
+
+	// 查询结果的函数
+	getresFn := func(client *ethclient.Client, ctx context.Context, txHash common.Hash) (*xcom.Result, error) {
+		receipt, err := client.TransactionReceipt(ctx, txHash)
+		if err != nil {
+			return nil, fmt.Errorf("get TransactionReceipt fail:%v", err)
+		}
+		var logRes [][]byte
+		if err := rlp.DecodeBytes(receipt.Logs[0].Data, &logRes); err != nil {
+			return nil, fmt.Errorf("rlp decode fail:%v", err)
+		}
+		var res xcom.Result
+		if err := json.Unmarshal(logRes[0], &res); err != nil {
+			return nil, fmt.Errorf("json decode fail:%v", err)
+		}
+		return &res, nil
+	}
+
 	type socket struct {
 		client *ethclient.Client
 		ctx    context.Context
@@ -140,7 +180,7 @@ func (s *stakingCases) CaseBatchDelegate() error {
 			return err
 		}
 
-		s.client = client
+		//s.client = client
 
 		sock := &socket{
 			client: client,
@@ -150,49 +190,68 @@ func (s *stakingCases) CaseBatchDelegate() error {
 
 		clientQueue[i] = sock
 
-		versionValue, err := s.GetProgramVersion(ctx)
+		versionValue, err := client.GetProgramVersion(ctx)
+
 		if err != nil {
 			return err
 		}
 
-		proof, err := s.GetSchnorrNIZKProve(ctx)
+		proof, err := client.GetSchnorrNIZKProve(ctx)
+
 		if err != nil {
 			return err
 		}
 
-		var input stakingInput
-
-		input.NodeId = nodeId
-
-		// programVersion
-		input.ProgramVersion = versionValue.Version
 		// programVersionSign
 		var versionSign common.VersionSign
 		versionSign.UnmarshalText([]byte(versionValue.Sign))
-		input.ProgramVersionSign = versionSign
 
 		// bls publicKey
 		var keyHex bls.PublicKeyHex
 		keyHex.UnmarshalText([]byte(node.BlsKey))
-		input.BlsPubKey = keyHex
 		// bls proof
 		var proofHex bls.SchnorrProofHex
 		proofHex.UnmarshalText([]byte(proof))
-		input.BlsProof = proofHex
 
-		input.Amount, _ = new(big.Int).SetString("10000000000000000000000000", 10)
-		input.Typ = 0
+		stakeAmount, _ := new(big.Int).SetString("10000000000000000000000000", 10)
 
 		index := rand.Intn(len(accountQueue) - 1)
 
 		stakingAccount := accountQueue[index]
 
-		// 收益账户是自己
-		input.BenefitAddress = stakingAccount.Address
+		var params [][]byte
+		params = make([][]byte, 0)
+		fnType, _ := rlp.EncodeToBytes(uint16(1000))
+		typ, _ := rlp.EncodeToBytes(uint16(0))
+		benefitAddress, _ := rlp.EncodeToBytes(stakingAccount.Address)
+		nodeIdrlp, _ := rlp.EncodeToBytes(nodeId)
+		externalId, _ := rlp.EncodeToBytes("")
+		nodeName, _ := rlp.EncodeToBytes("非官方第" + fmt.Sprint(i+1) + "号节点")
+		website, _ := rlp.EncodeToBytes("")
+		details, _ := rlp.EncodeToBytes("")
+		amount, _ := rlp.EncodeToBytes(stakeAmount)
+		programVersion, _ := rlp.EncodeToBytes(versionValue.Version)
+		programVersionSign, _ := rlp.EncodeToBytes(versionSign)
+		blsPubKey, _ := rlp.EncodeToBytes(keyHex)
+		proofRlp, _ := rlp.EncodeToBytes(proofHex)
 
-		input.NodeName = "非官方第" + fmt.Sprint((i + 1)) + "号节点"
+		params = append(params, fnType)
+		params = append(params, typ)
+		params = append(params, benefitAddress)
+		params = append(params, nodeIdrlp)
+		params = append(params, externalId)
+		params = append(params, nodeName)
+		params = append(params, website)
+		params = append(params, details)
+		params = append(params, amount)
+		params = append(params, programVersion)
+		params = append(params, programVersionSign)
+		params = append(params, blsPubKey)
+		params = append(params, proofRlp)
 
-		txHash, err := s.CreateStakingTransaction(ctx, stakingAccount, input)
+		send := s.encodePPOS(params)
+
+		txHash, err := SendRawTransaction(ctx, client, stakingAccount, vm.StakingContractAddr, "0", send)
 		if err != nil {
 			return fmt.Errorf("createStakingTransaction fail:%v", err)
 		}
@@ -200,25 +259,24 @@ func (s *stakingCases) CaseBatchDelegate() error {
 
 		wg.Add(1)
 
-		go func(tx_Hash common.Hash, c context.Context) {
+		go func(txhash common.Hash, client *ethclient.Client, ctx context.Context) {
 
 			res := new(txResult)
 
-			if err := s.WaitTransactionByHash(c, tx_Hash); err != nil {
+			if err := waitFn(client, ctx, txhash); err != nil {
 				res.msg = "Failed to wait staking tx"
 				res.err = err
-				res.hash = tx_Hash
+				res.hash = txhash
 				stakeResCh <- res
 				wg.Done()
 				return
 			}
-			log.Print("end create staking", tx_Hash.String())
 
-			xres, err := s.GetXcomResult(c, tx_Hash)
+			xres, err := getresFn(client, ctx, txhash)
 			if err != nil {
 				res.msg = "Failed to query staking result"
 				res.err = err
-				res.hash = tx_Hash
+				res.hash = txhash
 				stakeResCh <- res
 				wg.Done()
 				return
@@ -226,11 +284,11 @@ func (s *stakingCases) CaseBatchDelegate() error {
 			log.Printf("end create staking,res:%+v", xres)
 
 			res.msg = "Staking success, " + fmt.Sprintf("res: %+v", xres)
-			res.hash = tx_Hash
+			res.hash = txhash
 			stakeResCh <- res
 			wg.Done()
 
-		}(txHash, ctx)
+		}(txHash, client, ctx)
 	}
 
 	wg.Wait()
@@ -250,44 +308,6 @@ func (s *stakingCases) CaseBatchDelegate() error {
 
 	minimumThreshold, _ := new(big.Int).SetString("10000000000000000000", 10)
 	_, to := s.generateEmptyAccount()
-
-	waitFn := func(client *ethclient.Client, ctx context.Context, txHash common.Hash) error {
-		i := 0
-		for {
-			if i > 10 {
-				return errors.New("wait to long")
-			}
-			_, isPending, err := client.TransactionByHash(ctx, txHash)
-			if err == nil {
-				if !isPending {
-					break
-				}
-			} else {
-				if err != platON.NotFound {
-					return err
-				}
-			}
-			time.Sleep(time.Second)
-			i++
-		}
-		return nil
-	}
-
-	getresFn := func(client *ethclient.Client, ctx context.Context, txHash common.Hash) (*xcom.Result, error) {
-		receipt, err := client.TransactionReceipt(ctx, txHash)
-		if err != nil {
-			return nil, fmt.Errorf("get TransactionReceipt fail:%v", err)
-		}
-		var logRes [][]byte
-		if err := rlp.DecodeBytes(receipt.Logs[0].Data, &logRes); err != nil {
-			return nil, fmt.Errorf("rlp decode fail:%v", err)
-		}
-		var res xcom.Result
-		if err := json.Unmarshal(logRes[0], &res); err != nil {
-			return nil, fmt.Errorf("json decode fail:%v", err)
-		}
-		return &res, nil
-	}
 
 	// 批量发起委托
 	for len(accountMap) != 0 {
