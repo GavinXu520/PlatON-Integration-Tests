@@ -195,8 +195,8 @@ func (r *restrictCases) CaseCreatePlan() error {
 		return false, nil
 	}
 	for _, val := range result.Entry {
-		tmp := new(big.Int).Add(resAmount, val.Amount)
-		resAmount.Add(resAmount, val.Amount)
+		tmp := new(big.Int).Add(resAmount, (*big.Int)(val.Amount))
+		resAmount.Add(resAmount, (*big.Int)(val.Amount))
 		r.addJobs(fmt.Sprintf("锁仓释放计划高度:%v", val.Height), cmpfunc, val.Height, tmp)
 	}
 	return nil

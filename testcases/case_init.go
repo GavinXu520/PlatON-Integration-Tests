@@ -83,7 +83,7 @@ func (r *initCases) CaseRewardManagerPoolRestrictingRecord() error {
 	log.Printf("RewardManagerPoolAddr  RestrictingInfo  %+v", res)
 	totalMount := new(big.Int)
 	for _, value := range res.Entry {
-		totalMount.Add(totalMount, value.Amount)
+		totalMount.Add(totalMount, (*big.Int)(value.Amount))
 	}
 	t, _ := new(big.Int).SetString("259096240418673500000000000", 10)
 	if totalMount.Cmp(t) != 0 {
