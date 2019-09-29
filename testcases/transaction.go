@@ -82,6 +82,13 @@ func SendRawTransaction(ctx context.Context, client *ethclient.Client, from *Pri
 
 	newTx := getSignedTransaction(from, to, v, gas, gasPrise, data)
 
+	//fmt.Println("txHash", newTx.Hash())
+	//fmt.Println("gas", newTx.Gas())
+	//fmt.Println("gasPrice", newTx.GasPrice().String())
+	//fmt.Println("value", newTx.Value().String())
+	//fmt.Println("from", from.Address.String())
+	//fmt.Println("to", newTx.To().String())
+
 	if err := client.SendTransaction(ctx, newTx); err != nil {
 		panic(err)
 	}

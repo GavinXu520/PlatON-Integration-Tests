@@ -251,6 +251,8 @@ func (s *stakingCases) CaseBatchDelegate() error {
 
 		send := s.encodePPOS(params)
 
+		//fmt.Println("Staking from", stakingAccount.Address.String())
+
 		txHash, err := SendRawTransaction(ctx, client, stakingAccount, vm.StakingContractAddr, "0", send)
 		if err != nil {
 			return fmt.Errorf("createStakingTransaction fail:%v", err)
